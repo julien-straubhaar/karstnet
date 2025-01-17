@@ -23,7 +23,7 @@ import scipy.stats as st
 import matplotlib.pyplot as plt
 # import sqlite3
 # noinspection PyUnresolvedReferences
-# import mplstereonet
+import mplstereonet # for projection='stereo'
 
 
 # *****************************************************************************
@@ -285,7 +285,8 @@ class KGraph:
               node_color='lightblue',
               show_ticks=False,
               axis_equal=False,
-              figsize=(6, 3)):
+              figsize=(6, 3),
+              return_fig=False):
         """
         Plots a 2D view of the karstic network.
 
@@ -313,6 +314,14 @@ class KGraph:
         figsize : tuple, default: (6, 3)
             contains the (width, height) dimension of the figure
 
+        return_fig : bool, default: False
+            indicates if the figure object is returned
+
+        Returns
+        -------
+        fig: Figure object (matplotlib), optional        
+            figure, returned if `return_fig=True`
+
         Examples
         --------
             >>> myKGraph = KGraph([],{})
@@ -322,17 +331,25 @@ class KGraph:
         # 2D  plot
 
         if graph_type == 0:
-            self._plot2(self.graph, with_labels, node_size, node_color, show_ticks, axis_equal, figsize)
+            fig = self._plot2(self.graph, with_labels, node_size, node_color, show_ticks, axis_equal, figsize)
             plt.title('original')
-            plt.show()
         else:
-            self._plot2(self.graph_simpl, with_labels, node_size, node_color, show_ticks, axis_equal, figsize)
+            fig = self._plot2(self.graph_simpl, with_labels, node_size, node_color, show_ticks, axis_equal, figsize)
             plt.title('simplified')
-            plt.show()
 
+        plt.show()
+
+        if return_fig:
+            return fig
         return
 
-    def plot3(self, graph_type=0, zrotation=30, xyrotation=0, show_nodes=False, figsize=(6, 3)):
+    def plot3(self, 
+              graph_type=0, 
+              zrotation=30, 
+              xyrotation=0, 
+              show_nodes=False, 
+              figsize=(8, 5), 
+              return_fig=False):
         """
         Plots a 3D view of the karstic network.
 
@@ -356,6 +373,14 @@ class KGraph:
         figsize : tuple, default: (6, 3)
             contains the (width, height) dimension of the figure
 
+        return_fig : bool, default: False
+            indicates if the figure object is returned
+
+        Returns
+        -------
+        fig: Figure object (matplotlib), optional        
+            figure, returned if `return_fig=True`
+
         Examples
         --------
             >>> myKGraph.plot3()
@@ -364,17 +389,19 @@ class KGraph:
         # 3D  plot
 
         if graph_type == 0:
-            self._plot3(self.graph, zrotation, xyrotation, show_nodes, figsize)
+            fig = self._plot3(self.graph, zrotation, xyrotation, show_nodes, figsize)
             plt.title('original')
-            plt.show()
         else:
-            self._plot3(self.graph_simpl, zrotation, xyrotation, show_nodes, figsize)
+            fig = self._plot3(self.graph_simpl, zrotation, xyrotation, show_nodes, figsize)
             plt.title('simplified')
-            plt.show()
 
+        plt.show()
+
+        if return_fig:
+            return fig
         return
 
-    def plot(self, xlabel='x', ylabel='y', figsize=(12, 5)):
+    def plot(self, xlabel='x', ylabel='y', figsize=(12, 5), return_fig=False):
         """
         Simple 2D map of the original and simplified karstic network.
 
@@ -392,9 +419,13 @@ class KGraph:
         figsize : tuple, default: (12, 5)
             contains the (width, height) dimension of the figure
 
+        return_fig : bool, default: False
+            indicates if the figure object is returned
+
         Returns
         -------
-        fig: Figure object (matplotlib)
+        fig: Figure object (matplotlib), optional        
+            figure, returned if `return_fig=True`
 
         Examples
         --------
@@ -415,23 +446,26 @@ class KGraph:
                          node_size=0.1)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+
         plt.show()
 
-        return fig
+        if return_fig:
+            return fig
+        return
 
-    def plotxz(self, figsize=(12, 5)):
+    def plotxz(self, figsize=(12, 5), return_fig=False):
         """
         Calls method `plot` with keyword arguments xlabel='x', ylabel='z'.
         """
-        fig = self.plot(xlabel='x', ylabel='z', figsize=figsize)
-
-        return fig
+        return self.plot(xlabel='x', ylabel='z', figsize=figsize, return_fig=return_fig)
 
     # ------
     # Member function written by Philippe Vernant 2019/11/25
     # Modified by Pauline Collon (aug. 2020) to weight density map by lenghts
 
-    def stereo(self, weighted=True):
+    # Some additional modif by Julien Straubhaar 2025/01
+    
+    def stereo(self, weighted=True, figsize=(16, 8), return_fig=False):
         """
         Density map of orientations and rose diagram of the karstic network.
 
@@ -453,9 +487,16 @@ class KGraph:
             indicates if the maps are weighted by length (True), or if
             each edge has the same weight (False)
 
+        figsize : tuple, default: (16, 8)
+            contains the (width, height) dimension of the figure
+
+        return_fig : bool, default: False
+            indicates if the figure object is returned
+
         Returns
         -------
-        fig: Figure object (matplotlib)
+        fig: Figure object (matplotlib), optional        
+            figure, returned if `return_fig=True`
 
         Examples
         --------
@@ -493,7 +534,7 @@ class KGraph:
 
         # Define the grid for plotting maps and the figure
         gs = GridSpec(nrows=20, ncols =2)
-        fig = plt.figure(figsize=(16, 8))
+        fig = plt.figure(figsize=figsize)
 
         # ----- Stereo -----
         # Density map - Allows to consider almost vertical conduits
@@ -556,7 +597,9 @@ class KGraph:
         fig.tight_layout()
         plt.show()
 
-        return fig
+        if return_fig:
+            return fig
+        return
 
     # end modif PV 2019/11/25
 
@@ -764,24 +807,14 @@ class KGraph:
 
         # Print these basics
         print(
-            "\nThis network contains :\n",
-            nb_nodes_comp,
-            "nodes (stations) and ",
-            nb_edges_comp,
-            "edges.\n",
-            "On the simplified graph, there are : ",
-            nb_nodes,
-            "nodes (stations) and ",
-            nb_edges,
-            "edges,\n",
-            nb_extremity_nodes,
-            "are extremity nodes (entries or exits) and ",
-            nb_junction_nodes,
-            "are junction nodes.\nThere is/are ",
-            nb_connected_components,
-            "connected component.s and ",
-            nb_cycles,
-            "cycle.s.\n")
+            "\nThis network (complete graph) contains :\n",
+            "   ", nb_nodes_comp, "nodes (stations) and ", nb_edges_comp, "edges.\n",
+            "On the simplified graph, there are :\n",
+            "   ", nb_nodes, "nodes (stations) and ", nb_edges, "edges,\n",
+            "   ", nb_extremity_nodes, "are extremity nodes (entries or exits) and\n",
+            "   ", nb_junction_nodes, "are junction nodes.\n"
+            "There is/are", nb_connected_components, "connected component.s and", 
+            nb_cycles, "cycle.s.\n")
 
         # Howard's parameters
         # (Howard, A. D., Keetch, M. E., & Vincent, C. L. (1970).
@@ -798,9 +831,9 @@ class KGraph:
         beta = nb_edges / (nb_nodes)
         gamma = nb_edges / (3 * (nb_nodes - 2))
         print("\nHoward's parameter are (Howard, 1970) :",
-              "\n alpha :", alpha,
-              "\n beta :", beta,
-              "\n gamma :", gamma)
+              "\n   alpha :", alpha,
+              "\n   beta :", beta,
+              "\n   gamma :", gamma)
         print("\nNote that this computation considers the node of degree 2",
               "necessary to loop preservations as Seed Nodes, in order to",
               "stay consistent with Howard's illustrations.")
@@ -1431,7 +1464,7 @@ class KGraph:
 
         return fig
 
-    def _plot3(self, G, zrotation=30, xyrotation=0, show_nodes=False, figsize=(6, 3)):
+    def _plot3(self, G, zrotation=30, xyrotation=0, show_nodes=False, figsize=(8, 5)):
         """
         NOT PUBLIC
         Plots a 3D view of a graph G that could be the simplified or the
