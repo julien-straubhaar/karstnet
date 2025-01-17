@@ -10,29 +10,30 @@ Karstnet Import FC
 
 Karstnet is a Python package for the analysis of karstic networks.
 
-The Import FC module contains functions for import and exports
-in various formats.
+The Import FC module contains functions for import KGraph from 
+various formats.
 
 """
 
 # ----External librairies importations
+import pandas as pd 
 import numpy as np
 import networkx as nx
-import scipy.stats as st
-import matplotlib.pyplot as plt
 import sqlite3
-import mplstereonet
+# import scipy.stats as st
+# import matplotlib.pyplot as plt
+# import mplstereonet
 
 # ----Internal module dependancies
 from karstnet.base import *
 
 
-# *************************************************************
-# -------------------Public Functions:-------------------------
-# -------------------GRAPH GENERATORS--------------------------
-# *************************************************************
+# *****************************************************************************
+# ----- Functions for import (KGraph generators) -----
+# *****************************************************************************
 
-def from_nxGraph(nxGraph, coordinates, properties={}, verbose=True):
+# Import from networkx graph
+def from_nxGraph(nxGraph, coordinates, properties=None, verbose=True):
     """
     Creates a Karst graph from a Networkx graph.
 
@@ -44,11 +45,15 @@ def from_nxGraph(nxGraph, coordinates, properties={}, verbose=True):
     nxGraph : networkx graph
         the input graph
 
-    coordinates : dictionnary
-        the coordinates of the node, keys are node names
+    coordinates : dictionary
+        the coordinates of the node, keys are node names, values are
+        sequence of 2 or 3 floats (for 2d or 3d case)
 
-    properties : dictionnary
+    properties : dictionary, optional
         optional argument containing properties associated with the nodes
+
+    verbose : bool, default: True
+        indicates if info is printed
 
     Returns
     -------
@@ -57,30 +62,59 @@ def from_nxGraph(nxGraph, coordinates, properties={}, verbose=True):
 
     Examples
     --------
-       >>> myKGraph = kn.from_nxGraph(G, coord)
-       >>> myKGraph = kn.from_nxGraph(G, coord, prop)
+        >>> myKGraph = kn.from_nxGraph(G, coord)
+        >>> myKGraph = kn.from_nxGraph(G, coord, prop)
     """
     # Initialization of the complete graph
     edges = nx.to_edgelist(nxGraph)
-    Kg = KGraph(edges, coordinates, properties, verbose=verbose)
+    Kg = KGraph(edges, coordinates, properties=properties, verbose=verbose)
 
     return Kg
 
-
-def from_nodlink_dat(basename, verbose=True):
+# Import from ascii files
+def from_nodlink_dat(
+        basename,
+        suffix_nodes='_nodes.dat', 
+        suffix_links='_links.dat',
+        delimiter_nodes=' ',  
+        delimiter_links=' ',
+        verbose=True):
     """
     Creates the Kgraph from two ascii files (nodes, and links).
 
+    The file for nodes contains the node coordinates and optional 
+    properties: one line per node, the first two columns are the 
+    x- and y- coordinates, the third column (optional) is the
+    z-coordinate and the next columns (if any) are the properties
+
+    The file for links contains the list of edges:
+    one edge per line: the node ids of the two extremities (2 columns);
+    the id corresponds to the line number in the node file.
+
+    Note: the final node ids (node names) starts from 0 in the output
+    object.
+
     Parameters
     ----------
-    basename : string
-        The base name used for the input files.
+    basename : str
+        the base name (prefix) used for the input files
 
-        The input files are named using the following convention:
-         - basename_nodes.dat: the matrix of 3D node coordinates
-           one line per node, one column per coordinates
-
-         - basename_links.dat: the list of edges
+    suffix_nodes : str, default: '_nodes.dat'
+        the input file containing the nodes is 
+        `basename``suffix_nodes`
+    
+    suffix_links : str, default: '_links.dat'
+        the input file containing the links (edges) is 
+        `basename``suffix_links`
+    
+    delimiter_nodes : str, default:' '
+        delimiter used in file for nodes
+    
+    delimiter_links : str, default:' '
+        delimiter used in file for links
+ 
+    verbose : bool, default: True
+        indicates if info is printed
 
     Returns
     -------
@@ -89,53 +123,204 @@ def from_nodlink_dat(basename, verbose=True):
 
     Examples
     --------
-       >>> myKGraph = kn.from_nodlink_dat("MyKarst")
+        >>> myKGraph = kn.from_nodlink_dat("MyKarst")
     """
 
-    link_name = basename + '_links.dat'
-    node_name = basename + '_nodes.dat'
+    # Files
+    filename_links = f'{basename}{suffix_links}'
+    filename_nodes = f'{basename}{suffix_nodes}'
 
     # Read data files if exist - otherwise return empty graph
     try:
-        links = np.loadtxt(link_name).astype(int) - 1
+        links = np.loadtxt(filename_links, delimiter=delimiter_links).astype(int) - 1
     except OSError:
-        print("IMPORT ERROR: Could not import {}".format(link_name))
+        print("IMPORT ERROR: Could not import {}".format(filename_links))
         return
 
     try:
-        nodes = np.loadtxt(node_name)
+        nodes = np.loadtxt(filename_nodes, delimiter=delimiter_nodes)
     except OSError:
-        print("IMPORT ERROR: Could not import {}".format(node_name))
+        print("IMPORT ERROR: Could not import {}".format(filename_nodes))
         return
-    # Create the dictionnary of coordinates
+    # Create the dictionary of coordinates
     coord = dict(enumerate(nodes[:, :3].tolist()))
 
     if len(nodes[0] > 3):
         properties = dict(enumerate(nodes[:, 3:].tolist()))
     else:
-        properties = {}
+        properties = None
 
     Kg = KGraph(links, coord, properties, verbose=verbose)
 
     if verbose:
-        print("Graph successfully created from file !\n")
+        print("Graph successfully created from ascii files !\n")
+    return Kg
+
+
+# Import from csv files (Julien Straubhaar)
+def from_csv(
+        basename,
+        suffix_nodes='_nodes.csv', 
+        suffix_links='_links.csv', 
+        delimiter_nodes=';',  
+        delimiter_links=';',
+        verbose=True):
+    """
+    Creates the Kgraph from two csv files (nodes, and links).
+
+    The file for nodes has the columns: 
+        - ['id',] 'x', 'y'[, 'z', '<node_prop0>', '<node_prop1>', ...]
+
+    Default id (if column is not given) are integer starting from 0.
+    All properties (if any) are stored as a unique attribute (in networkx 
+    graph) made up of the sequence of all properties, attribute name will 
+    be 'prop'.
+
+    The file for links has the columns:
+        - '<node_idA>', '<node_idB>'
+
+    where the two columns, '<node_idA>', '<node_idB>', are the node ids 
+    of the two extremities of a link (edge).
+    
+    Parameters
+    ----------
+    basename : str
+        the base name (prefix) used for the input files
+
+    suffix_nodes : str, default: '_nodes.csv'
+        the input file containing the nodes is 
+        `basename``suffix_nodes`
+    
+    suffix_links : str, default: '_links.csv'
+        the input file containing the links (edges) is 
+        `basename``suffix_links`
+    
+    delimiter_nodes : str, default:';'
+        delimiter used in file for nodes
+    
+    delimiter_links : str, default:';'
+        delimiter used in file for links
+     
+    verbose : bool, default: True
+        indicates if info is printed
+
+    Returns
+    -------
+    KGraph
+        A KGraph object
+
+    Examples
+    --------
+        >>> myKGraph = kn.from_csv("MyKarst")
+    """
+    #
+    # PROPERTIES ON LINKS COULD BE HANDLED:
+    # The file for links has the columns:
+    #     - '<node_idA>', '<node_idB>'[, '<link_prop0>', '<link_prop1>', ...]
+    #
+    # where the two first columns, '<node_idA>', '<node_idB>', are the node ids 
+    # of the two extremities of a link (edge). 
+    # All properties (if any) are stored as a unique attribute (in networkx 
+    # graph) made up of the sequence of all properties, attribute name will 
+    # be 'prop'.
+    # 
+    
+    # Files
+    filename_nodes = f'{basename}{suffix_nodes}'
+    filename_links = f'{basename}{suffix_links}'
+
+    # Read node file (set data frame)
+    try:
+        nodes_df = pd.read_csv(filename_nodes, delimiter=delimiter_nodes)
+    except OSError:
+        print(f'IMPORT ERROR: Could not import nodes (file: {filename_nodes})')
+        return
+
+    # Read link file (set data frame)
+    try:
+        links_df = pd.read_csv(filename_links, delimiter=delimiter_links)
+    except OSError:
+        print(f'IMPORT ERROR: Could not import links (file: {filename_links})')
+        return
+
+    # Set node id (list)
+    if 'id' not in nodes_df.columns:
+        nodes_list = list(range(nodes_df.shape[0]))
+    else:
+        nodes_list = list(nodes_df['id'])
+
+    # Set node coordinates (dict)
+    if 'x' not in nodes_df.columns:
+        raise ValueError(f"ERROR: Column 'x' not present")
+    if 'y' not in nodes_df.columns:
+        raise ValueError(f"ERROR: Column 'y' not present")
+    if 'z' in nodes_df.columns:
+        coordinates = dict(zip(nodes_list, map(tuple, nodes_df[['x', 'y', 'z']].values)))
+    else:
+        coordinates = dict(zip(nodes_list, map(tuple, nodes_df[['x', 'y']].values)))
+
+    # Set node properties:
+    #   - properties (dict)          : key is a node id / value is a tuple
+    #   - properties_name_list (list): name of each entry of the tuple
+    #   - properties_name (str)      : name of the tuple
+    properties_name_list = [name for name in nodes_df.columns if name not in ('id', 'x', 'y', 'z')]
+    if len(properties_name_list):
+        properties = dict(zip(nodes_list, map(tuple, nodes_df[properties_name_list].values.reshape(-1, 1))))
+        properties_name = 'prop'
+    else:
+        properties = None
+        properties_name_list = None
+        properties_name = None
+
+    # Set edges (list)
+    links_arr = links_df[links_df.columns[:2]].values
+    if not np.all([id in nodes_list for id in links_arr.flatten()]):
+        raise ValueError(f"ERROR: node id in an edge not existing")
+    edges = list(map(tuple, links_arr))
+    
+    # # Set edge properties:
+    # #   - edge_properties (dict)          : key is a link / value is a tuple
+    # #   - edge_properties_name_list (list): name of each entry of the tuple
+    # #   - edge_properties_name (str)      : name of the tuple
+    # edge_properties_name_list = list(links_df.columns[2:])
+    # if len(edge_properties_name_list):
+    #     edge_properties = dict(zip(edges, map(tuple, nodes_df[edge_properties_name_list].values.reshape(-1, 1))))
+    #     edge_properties_name = 'edge_prop'
+    # else:
+    #     edge_properties = None
+    #     edge_properties_name_list = None
+    #     edge_properties_name = None
+
+    Kg = KGraph(edges, coordinates, 
+                properties=properties,
+                properties_name=properties_name,
+                properties_name_list=properties_name_list,
+                # edge_properties=edge_properties,
+                # edge_properties_name=edge_properties_name,
+                # edge_properties_name_list=edge_properties_name_list,
+                verbose=verbose)
+
+    if verbose:
+        print("Graph successfully created from csv files !\n")
     return Kg
 
 
 # modif PVernant 2019/11/25
 # add a function to read form an SQL export of Therion
-
 def from_therion_sql(basename, verbose=True):
     """
     Creates the Kgraph from on SQL file exported from a Therion survey file.
 
     Parameters
     ----------
-    basename : string
-        The base name used for the input files.
+    basename : str
+        the base name (prefix) used for the input file;
+        the input file is named using the following convention:
 
-        The input file is named using the following convention:
-         - basename.sql: the containing all the needed informations
+        - `basename`.sql: the containing all the needed informations
+
+    verbose : bool, default: True
+        indicates if info is printed
 
     Returns
     -------
@@ -144,7 +329,7 @@ def from_therion_sql(basename, verbose=True):
 
     Examples
     --------
-       >>> myKGraph = kn.from_therion_sql("MyKarst")
+        >>> myKGraph = kn.from_therion_sql("MyKarst")
     """
 
     sql_name = basename + '.sql'
@@ -182,7 +367,7 @@ def from_therion_sql(basename, verbose=True):
     links_ok = np.isin(links_th, stations_id)
     links = links_th[np.logical_and(links_ok[:, 0], links_ok[:, 1])]
 
-    # Create the dictionnary of coordinates
+    # Create the dictionary of coordinates
     nodes = np.asarray(nodes_th)
     coord = dict(enumerate(nodes[:, :3].tolist()))
 
@@ -194,7 +379,7 @@ def from_therion_sql(basename, verbose=True):
     Kg = KGraph(links, coord, properties, verbose=verbose)
 
     if verbose:
-        print("Graph successfully created from file !\n")
+        print("Graph successfully created from sql file !\n")
     return Kg
 
 # end of modif PVernant 2019/11/25
@@ -203,7 +388,7 @@ def from_therion_sql(basename, verbose=True):
 
 def from_pline(filename, verbose=True):
     """
-    Creates a KGraph from a Pline (Gocad ascii object)
+    Creates a KGraph from a Pline (Gocad ascii object).
 
     The function reads the Pline ASCII file and manages the colocated
     vertices indicated by the mention "ATOM" in the  file.
@@ -211,8 +396,11 @@ def from_pline(filename, verbose=True):
 
     Parameters
     ----------
-    filename : string
-        The name of the GOCAD Pline ASCII file.
+    filename : str
+        the name of the GOCAD Pline ASCII file
+
+    verbose : bool, default: True
+        indicates if info is printed
 
     Returns
     -------
@@ -221,7 +409,7 @@ def from_pline(filename, verbose=True):
 
     Examples
     --------
-       >>> myKGraph = kn.from_pline("MyKarst.pl")
+        >>> myKGraph = kn.from_pline("MyKarst.pl")
     """
 
     # Read data files if exist - otherwise return empty graph
@@ -243,7 +431,7 @@ def from_pline(filename, verbose=True):
     # iline (eq. for branch). This is symbolized by the word ATOM instead of
     # VRTX and a segment uses the atom index instead those of the vrtx.
     # To track correspondance between VRTX and ATOM and avoids duplicates,
-    # we use a counter of nodes, a dictionnary of nodes and one of atoms
+    # we use a counter of nodes, a dictionary of nodes and one of atoms
     cpt_nodes = 0
     dico_nodes = {}  # make the correspondance betwen vrtx index and node index
     dico_atom = {}  # to memorize the atom index and use it to write segments
@@ -301,11 +489,12 @@ def from_pline(filename, verbose=True):
 
 ########################################
 
-def from_therion_sql_enhanced(  inputfile, 
-                                cavename=None, 
-                                crs=None, 
-                                rights=None,
-                                citation=None ):
+def from_therion_sql_enhanced(
+        inputfile, 
+        cavename=None, 
+        crs=None, 
+        rights=None,
+        citation=None ):
     """ This function 
     1. loads all the data from Therion sql, 
     2. add flags on shots and stations,
@@ -324,30 +513,30 @@ def from_therion_sql_enhanced(  inputfile,
 
     Parameters
     ----------
-    inputfile : string
+    inputfile : str
         path to the SQL file exported with Therion
 
-    cavename : string, optional
+    cavename : str, optional
         Name of the cave. Will be attached to the graph as metadata. By default None
 
-    crs : string, optional
+    crs : str, optional
         Coordinate reference. Will be attached to the graph as metadata. By default None
 
-    rights : string, optional
+    rights : str, optional
         Information about the rights related to the dataset. Example: CC-BY-NC-SA, ... . Will be attached to the graph as metadata. By default None
 
-    citation : string, optional
+    citation : str, optional
         Description on how to cite the dataset. Will be attached to the graph as metadata. By default None
 
     Returns
     -------
     G : networkx graph 
         with optional properties on nodes and edges:
-        Dictionnaries always present on node: 'fulladdress', 'idsql'
-        Optional dictionnaries on node: 'flags', 'pos', 'splays'
-        Optional dictionnaries on edge: 'flags'
+        dictionaries always present on node: 'fulladdress', 'idsql'
+        Optional dictionaries on node: 'flags', 'pos', 'splays'
+        Optional dictionaries on edge: 'flags'
 
-    Example:
+    Examples
     --------
 
     >>> from_therion_sql_enhanced('inputfilepath.sql')
@@ -358,32 +547,30 @@ def from_therion_sql_enhanced(  inputfile,
     >>> set([k for n in G.nodes for k in G.nodes[n].keys()])
     List of attribute names attached to the nodes:
     >>> set([k for n in G.edges for k in G.edges[n].keys()])
-    Dictionnaries can be accessed with:
+    dictionaries can be accessed with:
     >>> nx.get_node_attribute(G,'attribute_name')
-
-
     """   
 
     import time 
     import networkx as nx
     import sqlite3
     from sqlite3 import OperationalError
-    import sys
+    # import sys
 
     def list2dict(key_list, value_list):
-        """Transform list to dictionnary by regouping values in list for identical keys. 
-        Using dictionnary comprehension.
+        """Transform list to dictionary by regouping values in list for identical keys. 
+        Using dictionary comprehension.
 
         Parameters
         ----------
         key_list : list
-            Dictionnary keys. Usually a list of int
+            dictionary keys. Usually a list of int
         value_list : list
-            Dictionnary values. Can be a list of int, flot, array, or list.
+            dictionary values. Can be a list of int, flot, array, or list.
 
         Returns
         -------
-        dictionnary
+        dictionary
 
         """
         
@@ -418,7 +605,7 @@ def from_therion_sql_enhanced(  inputfile,
         return c
     
     def extract_flags(c,type, return_type='dictionnary'):
-        """  Extract flags attached to the stations or the shots to the form of a dictionnary.
+        """  Extract flags attached to the stations or the shots to the form of a dictionary.
         Shot Flags currently present in Therion:
         'dpl' = duplicate, 'srf' = surface shots
 
@@ -432,10 +619,10 @@ def from_therion_sql_enhanced(  inputfile,
         Returns
         -------
         dict
-            Dictionnary with flags as keys, and each key containing a list of id or list of tuples.
+            dictionary with flags as keys, and each key containing a list of id or list of tuples.
         """ 
 
-        flag_list=[]
+        # flag_list=[]
 
         if type == 'shot':
             #extract shot flags with from-to info
@@ -535,7 +722,7 @@ def from_therion_sql_enhanced(  inputfile,
             address = '.'.join(s[3].split('.')[::-1])            
             nodes_tree_structure.append(f'{address}.{s[1]}')
         # nodes_tree_structure.append('%s@%s'%(s[1],s[3]))
-    #create dictionnary of the nodes coordinates
+    #create dictionary of the nodes coordinates
     coord = dict(zip(nodes_id,nodes_coord))
     #save tree structure in the form of two list, to prevent data loss when combining nodes
     #only take the stations
@@ -585,8 +772,8 @@ def from_therion_sql_enhanced(  inputfile,
         print('no splays legs to remove')
       
     # Import splay leg shot info on nodes in the form of a list of coordinates of the end of the shot. 
-    #create dictionnary of the nodes coordinates for each splays. 
-    #the dictionnary key corresponds to the id for each splay in the sql database
+    #create dictionary of the nodes coordinates for each splays. 
+    #the dictionary key corresponds to the id for each splay in the sql database
     coord = dict(zip(splay_id,splay_coord))
 
     #import links only for the nodes we exported
@@ -636,7 +823,7 @@ def from_therion_sql_enhanced(  inputfile,
     for i,position in enumerate(unique_pos):
         if i%1000 == 0:
             print(f'{i}/{len(unique_pos)} unique positions')
-        #this could be sped up by inversing the dictionnary key and values??
+        #this could be sped up by inversing the dictionary key and values??
         duplicates.append([key for key,coord in G.nodes('pos') if coord==position])
         #duplicates_fulladdress.append([])
 
@@ -645,7 +832,7 @@ def from_therion_sql_enhanced(  inputfile,
     #rename nodes 
     ########################################################################
     #duplicate nodes are renamed with the same name
-    #create new ids dictionnary to replace the initial indexes  
+    #create new ids dictionary to replace the initial indexes  
     #create new ids with repeating values for idential node position 
     #################################################################
     newis = []  
@@ -658,9 +845,9 @@ def from_therion_sql_enhanced(  inputfile,
         
     #flatten the list of list of old ids
     #####################################
-    print(f'Therion Import -- concatenate old ic in a dictionnary -- {(time.time() - start_time)}s')
+    print(f'Therion Import -- concatenate old ic in a dictionary -- {(time.time() - start_time)}s')
     concat_oldi = [j for i in duplicates for j in i]   
-    #the dictionnary has to be in the form of dict keys are the old keys, and the value is the new key
+    #the dictionary has to be in the form of dict keys are the old keys, and the value is the new key
     index_dict = dict(zip(concat_oldi, newis ))
     # index_fulladdress = dict(zip(concat_fulladdress,newis))
 
@@ -680,7 +867,7 @@ def from_therion_sql_enhanced(  inputfile,
 
     #Add attributes to the graph with the new ids,
     ################################################################
-    print(f'Therion Import --add dictionnaries to graph -- {(time.time() - start_time)}s')  
+    print(f'Therion Import --add dictionaries to graph -- {(time.time() - start_time)}s')  
     #combines the information for nodes that are regrouped
     #this steps has to be mande after the nodes have been regrouped, otherwise, 
     #the networkx function just gets rid of attribute values is they exist in two or more combined nodes
@@ -726,7 +913,7 @@ def from_therion_sql_enhanced(  inputfile,
     #SQL IDs (oldi)
     #add old therion id name as a property
     ################  
-    #has to be reversed from the oldi-newi dictionnary, 
+    #has to be reversed from the oldi-newi dictionary, 
     #but preserving the 
     print(f'Therion Import -- add sql ids -- {(time.time() - start_time)}s')
     sql_ids = {}
@@ -758,7 +945,7 @@ def from_therion_sql_enhanced(  inputfile,
 
 
 
-        ##################
+    ##################
     # ADD MANUAL DATA
     ##################
 
@@ -788,21 +975,21 @@ def clean_therion_sql_graph(G,
         The naming convention for the node should be based on the full address of the point, by default None
         additional_edges = [['full_address.0','full_address.1],['full_address.3','full_address.10]]
 
-    additional_flags_edges : dictionnary of list of tuple or list of lists, optional
+    additional_flags_edges : dictionary of list of tuple or list of lists, optional
         lists of edges to be flagged with corresponding flag to add. Any flag can be added. by default None
         However, for the duplicate edges and surface edges to be removed, it is necessary to use the correct flags.
-        It is also possible to use the add edges with this dictionnary instead of using the 'add_edges' option.
+        It is also possible to use the add edges with this dictionary instead of using the 'add_edges' option.
         List of flagged edge that will be removed by default:  'dpl', 'srf', 'art', 'rmv', 'spl'
 
-        Example of dictionnary: 
-        ----------------------
+        Example of dictionary: 
+        # ----------------------
         add_flags_edges = {'dpl':[['full_address.0','full_address.1],['full_address.3','full_address.10]], 'srf':[[full_address.3,full_address.2]]}   
 
-    additional_flags_nodes : dictionnary of list, optional
+    additional_flags_nodes : dictionary of list, optional
         list of nodes to be flagged, by default None
 
-        Example of dictionnary: 
-        -----------------------
+        Example of dictionary: 
+        # ----------------------
         additional_flags_nodes = {'ent':['full_address.0','full_address.1', 'full_address.4' ]
 
 
@@ -817,7 +1004,7 @@ def clean_therion_sql_graph(G,
     dict_address = dict(G.nodes('fulladdress'))
     inverse_dict_address = { v: k for k, l in dict_address.items() for v in l }
 
-    # only adds missing edges. this is just a simpler option than using the dictionnaries. Not sure it is usefull..
+    # only adds missing edges. this is just a simpler option than using the dictionaries. Not sure it is usefull..
     if additional_edges is not None:
         for i,edge in enumerate(additional_edges):
             edges[i][0] = [key for key, value in dict_address.items() if edge[0] in value ][0]
@@ -860,7 +1047,7 @@ def clean_therion_sql_graph(G,
                 #check if edge exists already (for example to add a duplicate flag on an exisiting edge)
                 if G.has_edge(edge_1,edge_2):
                 #check if there is flags already attached to the edges
-                #if not, create a new edge with the dictionnary 'flags' and the flag value
+                #if not, create a new edge with the dictionary 'flags' and the flag value
                     if 'flags' not in G[edge_1][edge_2]:
                         nx.set_node_attributes(G,{'flags':[flag]})
                         

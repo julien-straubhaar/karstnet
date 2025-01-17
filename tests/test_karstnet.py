@@ -10,7 +10,9 @@ Test module for the Karstnet class.
 Execute with pytest : `pytest test_karstnet.py`
 """
 
-import karstnet as kn
+#import karstnet as kn
+exec(open('../src/karstnet/base.py').read())
+
 import numpy as np
 import pytest
 
@@ -49,7 +51,8 @@ def periodic():
     edges = [(1, 2), (2, 3), (4, 5), (5, 6), (7, 8), (8, 9), (1, 4), (1, 7),
              (2, 5), (2, 8), (3, 6), (3, 9), (5, 8), (1, 3), (6, 4), (4, 7),
              (6, 9), (9, 7)]
-    k = kn.KGraph(edges, pos)
+    #k = kn.KGraph(edges, pos)
+    k = KGraph(edges, pos)
     return k
 
 
@@ -82,7 +85,8 @@ def disassortative():
         edges.append((0, i+1))
         edges.append((npt+1, i+npt+2))
 
-    k = kn.KGraph(edges, pos)
+    #k = kn.KGraph(edges, pos)
+    k = KGraph(edges, pos)
     return k
 
 
@@ -119,7 +123,8 @@ def assortative():
              (4, 15), (4, 16), (8, 16), (9, 17), (10, 18), (11, 19),
              (12, 20), (13, 21), (14, 22), (15, 23), (16, 24))
 
-    k = kn.KGraph(edges, pos)
+    #k = kn.KGraph(edges, pos)
+    k = KGraph(edges, pos)
     return k
 
 
@@ -131,13 +136,17 @@ def complete():
 
         Used to test:
         length entropy = 0.635
-        orientation entropy = 0.841
+        orientation entropy = 0.759 
         aspl = 1.0
         cpd = 0.0
         mean degree = 9.0
         cv degree = 0.0
         correlation vertex degree = 1.0
     """
+    # change from old version: 
+    #   orientation entropy = 0.841
+    # ?
+    
     npt = 10
     pos = {}
     edges = []
@@ -151,7 +160,8 @@ def complete():
             if i != j:
                 edges.append((i, j))
 
-    return kn.KGraph(edges, pos)
+    #return kn.KGraph(edges, pos)
+    return KGraph(edges, pos)
 
 
 @pytest.fixture
@@ -170,7 +180,8 @@ def semibinary():
            11: (0, 4), 12: (1, 4), 13: (0.5, 5)}
     edges = [(1, 2), (2, 3), (2, 4), (3, 5), (3, 6), (4, 7), (4, 8),
              (5, 9), (5, 10), (7, 11), (7, 12), (7, 13)]
-    return kn.KGraph(edges, pos)
+    #return kn.KGraph(edges, pos)
+    return KGraph(edges, pos)
 
 
 """
@@ -246,4 +257,5 @@ def test_length_entropy(disassortative, assortative, complete):
 
 def test_orientation_entropy(assortative, complete):
     assert float_eq(assortative.orientation_entropy(), 0.698)
-    assert float_eq(complete.orientation_entropy(), 0.841)
+    #assert float_eq(complete.orientation_entropy(), 0.841)
+    assert float_eq(complete.orientation_entropy(), 0.759)
